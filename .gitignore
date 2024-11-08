@@ -1,0 +1,50 @@
+# Python virtual environment
+env/
+venv/
+ENV/
+.env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Local development settings
+*.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Database files
+*.db
+*.sqlite3
+
+# Media files and user uploads
+media/
+uploads/
+
+# Temporary files
+*.tmp
+*.bak
+*~
