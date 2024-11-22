@@ -1,6 +1,9 @@
 # activate virtual environment
 source env/bin/activate
 
+# create virtual environment
+python3 -m venv env
+
 # shortcut to run python file
 CMD + CTRL + N
 
