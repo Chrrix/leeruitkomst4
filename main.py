@@ -329,18 +329,18 @@ class DetailsFrame(tk.Frame):
 
         # Maak de linker en rechter kolom   
         left_column = self.create_left_column(content_container)
-        right_column = self.create_right_column(content_container, vraag_data)
+        self.create_right_column(content_container, vraag_data)
         
         # Maak de context, vraag, begrippen, antwoord en feedback secties
         self.create_question_context(left_column, vraag_data)
         self.create_question_frame(left_column, vraag_data)
         self.create_terms_frame(left_column, vraag_data)
-        self.create_answer_frame(left_column, vraag_data)
+        self.create_answer_and_options_frame(left_column, vraag_data)
         self.create_feedback_section(main_container, vraag_data)
         self.create_positions_section(main_container, vraag_data)
 
     def create_scrollable_frame(self, parent):
-        """Maak een scrollbare container, voor algemene gebruik"""
+        """Maak een scrollbare container, voor show_vraag_ui"""
         canvas = tk.Canvas(parent)
         scrollbar = ttk.Scrollbar(parent, orient='vertical', command=canvas.yview)
         scrollable_frame = tk.Frame(canvas)
@@ -358,7 +358,7 @@ class DetailsFrame(tk.Frame):
         return scrollable_frame
 
     def create_header(self, parent, hoofdstuk, vraag_data):
-        """Maak de header van de vraag, hier staat de titel en de knoppen voor verwijderen en opslaan, voor algemene gebruik"""
+        """Maak de header van de vraag, hier staat de titel en de knoppen voor verwijderen en opslaan, voor show_vraag_ui"""
         header_frame = tk.Frame(parent, padx=20, pady=10)
         header_frame.pack(fill='x')
 
@@ -417,8 +417,16 @@ class DetailsFrame(tk.Frame):
                 })
 
             elif self.current_type == 'image_selection':
-                question_data.update({
-                    'imageOptions': getattr(self, 'image_urls', []),
+                if hasattr(self, 'image_entries'):  # Nieuwe vragen hebben image_entries
+                    print("self.image_entries", self.image_entries)
+                    image_urls = [entry.get() for entry in self.image_entries]
+                    question_data.update({
+                        'imageOptions': image_urls,
+                        'correctAnswer': int(self.answer_entry.get()) if hasattr(self, 'answer_entry') else 0
+                    })
+                else:
+                    question_data.update({
+                        'imageOptions': getattr(self, 'image_urls', []),
                     'correctAnswer': int(self.answer_entry.get()) if hasattr(self, 'answer_entry') else 0
                 })
 
@@ -478,32 +486,22 @@ class DetailsFrame(tk.Frame):
             self.app.handle_async_button(self.update_question(question_data))
 
     async def update_question(self, question_data):
-        """Deze functie update een bestaande vraag in de API, gebruikt in show_vraag_ui"""
+        """Deze functie update een bestaande vraag in de API, triggerd wanneer je op de knop 'Opslaan' drukt in show_vraag_ui"""
         print("Updating question:", question_data)
-        async with aiohttp.ClientSession() as session:
-            headers = {
-                'x-api-key': self.app.api_key,
-                'Content-Type': 'application/json'
-            }
-            try:
-                endpoint = f"{self.app.api_url}/http-updateQuestion"
-                async with session.put(endpoint, headers=headers, json=question_data) as response:
-                    if response.status == 200:
-                        messagebox.showinfo("Success", "Question updated successfully!")
-                    else:
-                        error_text = await response.text()
-                        messagebox.showerror("Error", f"Failed to update question: {error_text}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Error updating question: {str(e)}")
+        try:
+            await self.app.api_client.put('update_question', question_data)
+            messagebox.showinfo("Success", "Vraag opgeslagen in de database!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error updating question: {str(e)}")
 
     def create_content_container(self, parent):
-        """Maak de content container, voor algemene gebruik"""
+        """Maak de content container, hier wordt de hoofd container voor de vraag details, voor show_vraag_ui"""
         content_container = tk.Frame(parent, padx=20)
         content_container.pack(fill='both', expand=True)
         return content_container
 
     def create_left_column(self, parent):
-        """Maak de linker kolom, voor algemene gebruik"""
+        """Maak de linker kolom, voor show_vraag_ui"""
         left_column = tk.Frame(parent)
         left_column.pack(side='left', fill='both', expand=True, padx=(0, 10))
         return left_column
@@ -513,14 +511,14 @@ class DetailsFrame(tk.Frame):
         right_column = tk.Frame(parent)
         right_column.pack(side='right', fill='both', padx=(10, 0))
         if vraag_data.get('afbeelding'):
-            self.handle_async_button(self.load_and_display_question_image(
+            self.app.handle_async_button(self.load_and_display_question_image(
                 right_column, 
                 vraag_data['afbeelding']
             ))
         return right_column
 
     def create_question_context(self, parent, vraag_data):
-        """Maak de context sectie (context, begrippen, antwoord), voor show_vraag_ui"""
+        """Maak de context sectie, voor show_vraag_ui"""
         if vraag_data['type'] in ['open', 'multiple_choice']:
             try:
                 context_frame = tk.Frame(parent)
@@ -538,24 +536,18 @@ class DetailsFrame(tk.Frame):
                 self.context_text = None
 
     def create_question_frame(self, parent, vraag_data):
-        """Maak de vraag sectie (vraag tekst), voor show_vraag_ui"""
+        """Maak de vraag sectie (de daadwerkelijke vraag tekst), voor show_vraag_ui"""
         question_frame = tk.Frame(parent)
         question_frame.pack(fill='x', pady=10)
         
         tk.Label(question_frame,text="Vraag:",font=('Arial', 12, 'bold'),).pack(anchor='w')
         
-        # Create the text widget and store the reference immediately
-        self.question_text = tk.Text(  # Changed from vraag_text to self.question_text
-            question_frame,
-            height=4,
-            font=('Arial', 11),
-            wrap='word',
-        )
+        self.question_text = tk.Text(question_frame,height=4,font=('Arial', 11),wrap='word',)
         self.question_text.pack(fill='x', pady=5)
         self.question_text.insert('1.0', vraag_data['vraag_tekst'])
 
     def create_terms_frame(self, parent, vraag_data):
-        """Maak de begrippen sectie (begrippen), voor show_vraag_ui"""
+        """Maak de begrippen sectie (begrippen, en + knop om nieuwe begrippen toe te voegen), voor show_vraag_ui"""
         if vraag_data['type'] in ['open', 'multiple_choice']:
             terms_frame = tk.Frame(parent)
             terms_frame.pack(fill='x', pady=(20, 10))
@@ -570,7 +562,7 @@ class DetailsFrame(tk.Frame):
             terms_container = tk.Frame(terms_frame)
             terms_container.pack(fill='x')
             
-            self.terms_entries = []  # Store reference to list of term entries
+            self.terms_entries = [] #Empty list om de begrippen op te slaan
             for term, definition in vraag_data.get('terms', {}).items():
                 self.create_term_entry(terms_container, term, definition)
 
@@ -585,6 +577,7 @@ class DetailsFrame(tk.Frame):
         term_frame = tk.Frame(parent)
         term_frame.pack(fill='x', pady=2)
         
+        # Maak de linker kolom voor de term
         term_left = tk.Frame(term_frame)
         term_left.pack(side='left', fill='x', expand=True, padx=(0, 5))
         
@@ -594,6 +587,7 @@ class DetailsFrame(tk.Frame):
         term_entry.pack(side='left', fill='x', expand=True)
         term_entry.insert(0, term)
         
+        # Maak de rechter kolom voor de definitie
         def_right = tk.Frame(term_frame)
         def_right.pack(side='left', fill='x', expand=True, padx=(5, 0))
         
@@ -612,19 +606,15 @@ class DetailsFrame(tk.Frame):
         ).pack(side='right', padx=(5, 0))
         
         term_obj = TermFrame(term_entry, def_entry, term_frame)
-        self.terms_entries.append(term_obj)
+        self.terms_entries.append(term_obj) #Voeg de term toe aan de lijst
 
-    def create_answer_frame(self, parent, vraag_data):
+    def create_answer_and_options_frame(self, parent, vraag_data):
         """Maak de antwoord sectie (antwoord), voor show_vraag_ui"""
-        if vraag_data['type'] != 'drag_and_drop':
+        if vraag_data['type'] != 'drag_and_drop': #Drag and drop heeft geen antwoord
             answer_frame = tk.Frame(parent)
             answer_frame.pack(fill='x', pady=10)
             
-            tk.Label(
-                answer_frame,
-                text="Antwoord:",
-                font=('Arial', 12, 'bold'),
-            ).pack(anchor='w')
+            tk.Label(answer_frame, text="Antwoord:", font=('Arial', 12, 'bold'),).pack(anchor='w')
             
             if vraag_data['type'] == 'multiple_choice':
                 self.create_multiple_choice_ui(answer_frame, vraag_data)
@@ -632,27 +622,29 @@ class DetailsFrame(tk.Frame):
                 self.create_image_selection_ui(answer_frame, vraag_data)
             elif vraag_data['type'] == 'open':
                 self.create_open_question_ui(answer_frame, vraag_data)
+        else:
+            #bij drag and drop vraag, geen antwoord maar kan hier wel gebruik maken om ff bij nieuwe vraag een image url te maken
+            if vraag_data['id'] == 'new':
+                tk.Label(answer_frame,text="Afbeelding URL:",font=('Arial', 10)).pack(side='left', padx=(0, 5))
+                self.image_entry = ttk.Entry(answer_frame, width=20, name=f'new_image_option')
+                self.image_entry.pack(side='left', padx=(0, 5))
 
     def create_multiple_choice_ui(self, parent, vraag_data):
         """Maak de multiple choice sectie (opties), voor show_vraag_ui"""
-        self.option_entries = []  # Initialize the list
+        self.option_entries = []  # Lege lijst om de opties op te slaan
         
         # Maak het frame voor het correcte antwoord
         correct_answer_frame = tk.Frame(parent)
         correct_answer_frame.pack(fill='x', pady=5)
         
-        tk.Label(
-            correct_answer_frame,
-            text="Correct antwoord:",
-            font=('Arial', 10)
-        ).pack(side='left', padx=(0, 5))
+        tk.Label(correct_answer_frame, text="Correct antwoord:", font=('Arial', 10)).pack(side='left', padx=(0, 5))
         
-        self.answer_entry = ttk.Entry(correct_answer_frame)  # Store reference
+        self.answer_entry = ttk.Entry(correct_answer_frame)  # Opslag voor het correcte antwoord
         self.answer_entry.pack(side='left', fill='x', expand=True)
         if 'antwoord' in vraag_data:
             self.answer_entry.insert(0, vraag_data['antwoord'])
         
-        # Add button to add new option
+        # Knop om nieuwe opties toe te voegen
         add_option_frame = tk.Frame(parent)
         add_option_frame.pack(fill='x', pady=5)
         
@@ -663,21 +655,27 @@ class DetailsFrame(tk.Frame):
             command=lambda: self.add_multiple_choice_option()
         ).pack(side='right')
 
-        # Create options container
+        # Container voor de opties
         self.options_container = tk.Frame(parent)
         self.options_container.pack(fill='x')
 
-        # Add existing options
+        # Voeg de bestaande opties toe
         for optie in vraag_data.get('opties', []):
             self.add_multiple_choice_option(optie)
 
+        #Alleen bij het maken van nieuwe vragen, geef de urls op van de imageOptions
+        if vraag_data['id'] == 'new':
+            print("Nieuwe vraag, maak image entry")
+            tk.Label(correct_answer_frame,text="Afbeelding URL:",font=('Arial', 10)).pack(side='left', padx=(0, 5))
+            self.image_entry = ttk.Entry(correct_answer_frame, width=20, name=f'new_image_option')
+            self.image_entry.pack(side='left', padx=(0, 5))
+
     def add_multiple_choice_option(self, value=''):
-        """Voeg een optie toe aan de multiple choice sectie, voor show_vraag_ui"""
+        """Voeg een optie toe aan de multiple choice sectie, voor create_multiple_choice_ui"""
         option_frame = tk.Frame(self.options_container)
         option_frame.pack(fill='x', pady=2)
-        
-        # Create StringVar for the option text
-        option_var = tk.StringVar(value=value)
+    
+        option_var = tk.StringVar(value=value) #StringVar reageert op veranderingen en moet dus voor de entry staan
         self.option_entries.append(option_var)
         
         # Create the option entry
@@ -687,52 +685,54 @@ class DetailsFrame(tk.Frame):
         )
         entry.pack(side='left', fill='x', expand=True, padx=(0, 5))
         
-        # Add delete button
-        ttk.Button(
-            option_frame,
-            text="×",
-            width=3,
-            style='Accent.TButton',
+        # Knop om de optie te verwijderen
+        ttk.Button(option_frame,text="×",width=3,style='Accent.TButton',
             command=lambda: (
                 option_frame.destroy(),
                 self.option_entries.remove(option_var)
             )
         ).pack(side='left', padx=(5, 0))
 
+
     def create_image_selection_ui(self, parent, vraag_data):
-        
+        """Maak de image selection sectie (opties), voor show_vraag_ui"""
         images_frame = tk.Frame(parent)
         images_frame.pack(fill='x', pady=5)
         
         answer_container = tk.Frame(parent)
         answer_container.pack(fill='x', pady=5)
         
-        tk.Label(
-            answer_container,
-            text="Antwoord (0-3):",
-            font=('Arial', 10)
-        ).pack(side='left', padx=(0, 5))
+        tk.Label(answer_container,text="Antwoord (0-3):",font=('Arial', 10)).pack(side='left', padx=(0, 5)) #de user moet het antwoord invullen (mogelij moet er input validatie komen)
         
-        self.answer_entry = ttk.Entry(answer_container, width=5)  # Store reference
+        self.answer_entry = ttk.Entry(answer_container, width=5)  # Opslag voor het correcte antwoord
         self.answer_entry.pack(side='left')
         if 'correctAnswer' in vraag_data:
             self.answer_entry.insert(0, str(vraag_data['correctAnswer']))
         
-        self.image_urls = vraag_data['imageOptions']  # Store reference to image URLs
+        self.image_urls = vraag_data['imageOptions']  # Opslag voor de afbeeldingen
         
+        # Maak de afbeeldingen in een grid van 2x2
         for i, image_url in enumerate(self.image_urls, 1):
             row = (i-1) // 2
             col = (i-1) % 2
             option_frame = tk.Frame(images_frame)
             option_frame.grid(row=row, column=col, padx=5, pady=5)
-            self.handle_async_button(self.load_and_display_option_image(
-                option_frame, 
-                image_url, 
-                i
-            ))
+            #Laad de afbeeldingen asynchroon, zodat deze niet in de weg staan bij het maken van de grid
+            self.app.handle_async_button(self.load_and_display_option_image(option_frame, image_url, i))
+
+        #Alleen bij het maken van nieuwe vragen, geef de urls op van de imageOptions
+        if vraag_data['id'] == 'new':
+            print("Nieuwe vraag, maak image entries")
+            tk.Label(images_frame,text="Afbeeldingen URLS:",font=('Arial', 10, 'bold')).pack(side='left', padx=(0, 5))
+            self.image_entries = []
+            for i in range(4):
+                entry = ttk.Entry(images_frame, width=20, name=f'new_image_option_{i}')
+                entry.pack(side='left', padx=(0, 5))
+                self.image_entries.append(entry)
+
 
     def create_open_question_ui(self, parent, vraag_data):
-        """Maak de open vraag sectie (antwoord), voor show_vraag_ui"""
+        """Maak de open vraag antwoord sectie, voor show_vraag_ui"""
         antwoord_text = tk.Text(
             parent,
             height=4,
@@ -755,14 +755,7 @@ class DetailsFrame(tk.Frame):
             font=('Arial', 12, 'bold'),
         ).pack(anchor='w')
         
-        # Create the text widget and store the reference immediately
-        self.explanation_text = tk.Text(  # Changed from uitleg_text to self.explanation_text
-            uitleg_frame,
-            height=3,
-            font=('Arial', 11),
-            wrap='word',
-            width=30
-        )
+        self.explanation_text = tk.Text(uitleg_frame,height=3,font=('Arial', 11),wrap='word',width=30)
         self.explanation_text.pack(fill='x', pady=5)
         if 'uitleg' in vraag_data:
             self.explanation_text.insert('1.0', vraag_data['uitleg'])
@@ -776,22 +769,14 @@ class DetailsFrame(tk.Frame):
             positions_header = tk.Frame(positions_frame)
             positions_header.pack(fill='x', pady=(0, 5))
             
-            tk.Label(
-                positions_header,
-                text="Posities:",
-                font=('Arial', 12, 'bold'),
-            ).pack(side='left')
+            tk.Label(positions_header,text="Posities:",font=('Arial', 12, 'bold'),).pack(side='left')
             
             positions_container = tk.Frame(positions_frame)
             positions_container.pack(fill='x')
             
-            self.position_frames = []  # Store reference to position frames
+            self.position_frames = []  # Lege lijst om de positie frames op te slaan
             
-            ttk.Button(
-                positions_header,
-                text="+ Nieuwe positie",
-                style='Accent.TButton',
-                width=15,
+            ttk.Button(positions_header,text="+ Nieuwe positie",style='Accent.TButton',width=15,
                 command=lambda: self.add_position_entry(positions_container)
             ).pack(side='right')
             
@@ -804,6 +789,7 @@ class DetailsFrame(tk.Frame):
                 )
 
     def add_position_entry(self, container, index=None, x=0, y=0):
+        """Voeg een positie toe aan de drag and drop sectie, voor create_positions_section (eigenlijk zelfde als create_term_entry)"""
         class PositionFrame:  # Helper class to store entry references
             def __init__(self, x_entry, y_entry):
                 self.x_entry = x_entry
@@ -814,25 +800,19 @@ class DetailsFrame(tk.Frame):
         
         tk.Label(
             position_frame,
-            text=f"Positie {index + 1 if index is not None else len(self.position_frames) + 1}:",
+            text=f"Positie {index + 1 if index is not None else len(self.position_frames) + 1}:", 
+            # Bij bestaande posities: gebruikt index + 1
+            # Bij nieuwe positie: gebruikt len(self.position_frames) + 1 omdat index None is
             font=('Arial', 10, 'bold')
         ).pack(side='left', padx=(0, 10))
         
-        tk.Label(
-            position_frame,
-            text="X:",
-            font=('Arial', 10)
-        ).pack(side='left', padx=(0, 5))
+        tk.Label(position_frame,text="X:",font=('Arial', 10)).pack(side='left', padx=(0, 5))
         
         x_entry = ttk.Entry(position_frame, width=8)
         x_entry.pack(side='left', padx=(0, 10))
         x_entry.insert(0, str(x))
         
-        tk.Label(
-            position_frame,
-            text="Y:",
-            font=('Arial', 10)
-        ).pack(side='left', padx=(0, 5))
+        tk.Label(position_frame,text="Y:",font=('Arial', 10)).pack(side='left', padx=(0, 5))
         
         y_entry = ttk.Entry(position_frame, width=8)
         y_entry.pack(side='left')
@@ -841,12 +821,8 @@ class DetailsFrame(tk.Frame):
         pos_obj = PositionFrame(x_entry, y_entry)
         self.position_frames.append(pos_obj)
         
-        ttk.Button(
-            position_frame,
-            text="×",
-            width=3,
-            style='Accent.TButton',
-            command=lambda: (
+        ttk.Button(position_frame,text="×",width=3,style='Accent.TButton',
+        command=lambda: (
                 position_frame.destroy(),
                 self.position_frames.remove(pos_obj)
             )
@@ -855,6 +831,7 @@ class DetailsFrame(tk.Frame):
         ttk.Separator(container).pack(fill='x', pady=5)
 
     async def load_and_display_question_image(self, container, image_url):
+        """Laad en display de vraag afbeelding, voor de rechter kolom bij show_vraag_ui (open vraag, multiple choice)"""
         photo = await self.load_image_from_url(image_url, size=(200, 200))
         if photo:
             self.loaded_images.append(photo)
@@ -865,6 +842,7 @@ class DetailsFrame(tk.Frame):
             img_label.pack(padx=10, pady=10)
 
     async def load_and_display_option_image(self, container, image_url, option_num):
+        """Laad en display de afbeelding bij image selection vragen, voor create_image_selection_ui"""
         photo = await self.load_image_from_url(image_url, size=(100, 100))
         if photo:
             self.loaded_images.append(photo)
@@ -884,50 +862,32 @@ class DetailsFrame(tk.Frame):
             ).pack()
 
     def show_feedback_ui(self, feedback_data):
-        self.clear_content()
-        
-        # Create main container
+        """Maak de feedback view, voor show_feedback"""
+        self.clear_content() #Verwijder alle widgets in content_frame
         main_container = self.create_scrollable_frame(self.content_frame)
         
-        # Header
+        # Header met de titel
         header_frame = tk.Frame(main_container, padx=20, pady=10)
         header_frame.pack(fill='x')
         
-        tk.Label(
-            header_frame,
-            text=f"Feedback: {feedback_data.get('subject', '')}",
-            font=('Arial', 16, 'bold')
-        ).pack(side='left')
+        tk.Label(header_frame, text=f"Feedback: {feedback_data.get('subject', '')}", font=('Arial', 16, 'bold')).pack(side='left')
         
-        # Create a frame for status controls
+        # Frame voor status controls
         status_controls_frame = tk.Frame(main_container, padx=20, pady=10)
         status_controls_frame.pack(fill='x')
         
-        # Status label and dropdown on the left
+        # Status label en dropdown aan de linkerkant
         status_left_frame = tk.Frame(status_controls_frame)
         status_left_frame.pack(side='left')
         
-        tk.Label(
-            status_left_frame,
-            text="Status:",
-            font=('Arial', 12, 'bold')
-        ).pack(side='left', padx=(0, 10))
+        tk.Label(status_left_frame,text="Status:",font=('Arial', 12, 'bold')).pack(side='left', padx=(0, 10))
         
         status_var = tk.StringVar(value=feedback_data.get('status', 'pending'))
-        status_dropdown = ttk.Combobox(
-            status_left_frame,
-            textvariable=status_var,
-            values=['pending', 'in_progress', 'completed'],
-            state='readonly',
-            width=20
-        )
+        status_dropdown = ttk.Combobox(status_left_frame,textvariable=status_var,values=['pending', 'in_progress', 'completed'],width=20)
         status_dropdown.pack(side='left')
         
-        # Save button on the right
-        ttk.Button(
-            status_controls_frame,
-            text="Opslaan",
-            style='Accent.TButton',
+        # Opslaan knop
+        ttk.Button(status_controls_frame,text="Opslaan",style='Accent.TButton',
             command=lambda: self.app.handle_async_button(
                 self.update_feedback_status(
                     feedback_data['id'], 
@@ -936,148 +896,112 @@ class DetailsFrame(tk.Frame):
             )
         ).pack(side='right')
         
-        # Question ID section
+        # Vraag ID sectie
         if feedback_data.get('questionId'):
             question_id_frame = tk.Frame(main_container, padx=20, pady=10)
             question_id_frame.pack(fill='x')
             
-            tk.Label(
-                question_id_frame,
-                text="Vraag ID:",
-                font=('Arial', 12, 'bold')
-            ).pack(side='left', padx=(0, 10))
+            tk.Label(question_id_frame,text="Vraag ID:",font=('Arial', 12, 'bold')).pack(side='left', padx=(0, 10))
             
-            tk.Label(
-                question_id_frame,
-                text=feedback_data['questionId'],
-                font=('Arial', 12)
-            ).pack(side='left')
-            
-        
-        # Date
+            tk.Label(question_id_frame,text=feedback_data['questionId'],font=('Arial', 12)).pack(side='left')
+
+        # Datum
         if 'date' in feedback_data:
-            date_seconds = feedback_data['date'].get('_seconds', 0)
-            date_str = datetime.fromtimestamp(date_seconds).strftime('%d-%m-%Y %H:%M')
+            date_str = format_date(feedback_data['date'])
             tk.Label(
                 status_controls_frame,
                 text=f"Datum: {date_str}",
                 font=('Arial', 12)
             ).pack(side='right')
         
-        # User info
+        # Laat zien welke gebruiker feedback heeft gegeven
         if feedback_data.get('userId'):
             user_frame = tk.Frame(main_container, padx=20, pady=10)
             user_frame.pack(fill='x')
             
-            tk.Label(
-                user_frame,
-                text=f"Gebruiker ID: {feedback_data['userId']}",
-                font=('Arial', 12)
-            ).pack(anchor='w')
+            tk.Label(user_frame, text=f"Gebruiker ID: {feedback_data['userId']}", font=('Arial', 12)).pack(anchor='w')
         
         # Feedback content
         content_frame = tk.Frame(main_container, padx=20, pady=10)
         content_frame.pack(fill='both', expand=True)
         
-        tk.Label(
-            content_frame,
-            text="Feedback:",
-            font=('Arial', 12, 'bold')
-        ).pack(anchor='w')
+        tk.Label(content_frame, text="Feedback:",font=('Arial', 12, 'bold')).pack(anchor='w')
         
-        feedback_text = tk.Text(
-            content_frame,
-            height=10,
-            font=('Arial', 11),
-            wrap='word'
-        )
+        feedback_text = tk.Text(content_frame, height=10, font=('Arial', 11), wrap='word')
         feedback_text.pack(fill='both', expand=True, pady=5)
         feedback_text.insert('1.0', feedback_data.get('feedback', ''))
         feedback_text.config(state='disabled')
 
     def clear_content(self):
-        # Verwijder alle widgets in content_frame
+        """Verwijder alle widgets in content_frame"""
         for widget in self.content_frame.winfo_children():
             widget.destroy()
 
-    def handle_async_button(self, coro):
-        # Haal event loop op van de hoofd App instantie
-        loop = asyncio.get_event_loop()
-        asyncio.run_coroutine_threadsafe(coro, loop)
-
     def delete_question(self, question_id):
-        # Show confirmation dialog
+        """Verwijder een vraag voor perongeluke verwideren voorkomen, voor show_onderdelen_ui"""
         if messagebox.askyesno("Bevestiging", "Weet je zeker dat je deze vraag wilt verwijderen?"):
             self.app.handle_async_button(self.delete_question_request(question_id))
 
     async def delete_question_request(self, question_id):
-        async with aiohttp.ClientSession() as session:
-            headers = {
-                'x-api-key': self.app.api_key,
-                'Content-Type': 'application/json'
-            }
-            try:
-                endpoint = f"{self.app.api_url}/http-deleteQuestion"
-                async with session.delete(endpoint, headers=headers, json={'id': question_id}) as response:
-                    if response.status == 200:
-                        messagebox.showinfo("Success", "Vraag succesvol verwijderd!")
-                        # Refresh the list after deletion
-                        await self.app.show_onderdelen()
-                    else:
-                        error_text = await response.text()
-                        messagebox.showerror("Error", f"Fout bij verwijderen van vraag: {error_text}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Fout bij verwijderen van vraag: {str(e)}")
+        """Verwijder een vraag, voor delete_question"""
+        try:
+            await self.app.api_client.delete('delete_question', {'id': question_id})
+            messagebox.showinfo("Success", "Vraag succesvol verwijderd!")
+            # Refresh de lijst
+            await self.app.show_onderdelen()
+        except Exception as e:
+            messagebox.showerror("Error", f"Fout bij verwijderen van vraag: {str(e)}")
 
     async def create_question(self, question_data):
+        """Maak een vraag, wanneer iemand op opslaat drukt en de id is 'new' (dus niet bestaat in de database)"""
         print("create_question: ", question_data)
-        # Validate required fields
-        required_fields = ['question', 'type']
+        required_fields = ['question', 'type'] # VULT DIT AAN
         missing_fields = [field for field in required_fields if not question_data.get(field)]
         
         if missing_fields:
-            messagebox.showerror("Error", f"Missing required fields: {', '.join(missing_fields)}")
+            messagebox.showerror("Error", f"Vul de volgende velden in: {', '.join(missing_fields)}")
             return False
 
-        # Format the data to match the cloud function expectations
+        # Helaas moeten we hier weer terug de data formatteren naar de verwachtingen van de cloud functie/firestore database
+        # Ook hoeven we niet alle question_data velden mee te geven uit de lege template die we krijgen van de cloud functie
+        # Dit kan denk ik efficiënter, maar het werkt nu wel
         formatted_data = {
             'question': question_data['question'],
             'type': question_data['type'],
         }
 
-        # Add type-specific data
         if question_data['type'] == 'multiple_choice':
             if not question_data.get('answers') or len(question_data['answers']) < 2:
                 messagebox.showerror("Error", "Multiple choice questions need at least 2 answers")
                 return False
             formatted_data.update({
                 'answers': question_data['answers'],
-                'correctAnswer': question_data['correctAnswer'] or question_data['answers'][0]  # Default to first answer if none selected
+                'correctAnswer': question_data['correctAnswer'],
+                'image': self.image_entry.get() if hasattr(self, 'image_entry') else ''
             })
         
         elif question_data['type'] == 'image_selection':
             if not question_data.get('imageOptions') or len(question_data['imageOptions']) < 2:
-                messagebox.showerror("Error", "Image selection questions need at least 2 images")
+                messagebox.showerror("Error", "Minimum 2 afbeeldingen nodig")
                 return False
             formatted_data.update({
                 'imageOptions': question_data['imageOptions'],
-                'correctAnswer': str(question_data.get('correctAnswer', '0'))  # Default to '0' if none selected
+                'correctAnswer': str(question_data['correctAnswer'])
             })
 
         elif question_data['type'] == 'drag_and_drop':
             if not question_data.get('correctPositions'):
-                messagebox.showerror("Error", "Please add at least one position")
+                messagebox.showerror("Error", "Minimum 1 positie nodig")
                 return False
             formatted_data.update({
-                'correctPositions': question_data['correctPositions'],
-                'correctAnswer': 'positions'  # Fixed value for drag_and_drop
-            })
+                    'correctPositions': question_data['correctPositions'],
+                    'image': self.image_entry.get() if hasattr(self, 'image_entry') else ''
+                })
         
         elif question_data['type'] == 'open':
-            # For open questions, use explanation as correctAnswer if no specific answer is provided
-            formatted_data['correctAnswer'] = question_data.get('explanation', '')
+            formatted_data['correctAnswer'] = question_data['correctAnswer']
 
-        # Add optional fields if they exist
+        # Optionele velden
         if question_data.get('explanation'):
             formatted_data['explanation'] = question_data['explanation']
         if question_data.get('context'):
@@ -1087,78 +1011,43 @@ class DetailsFrame(tk.Frame):
         if question_data.get('image'):
             formatted_data['image'] = question_data['image']
 
-        # Add parent information to formatted data
+        # Voeg de parent informatie toe
         formatted_data['parent'] = question_data.get('parent', '')
 
-        # Make API request
-        async with aiohttp.ClientSession() as session:
-            headers = {
-                'x-api-key': self.app.api_key,
-                'Content-Type': 'application/json'
-            }
-            try:
-                endpoint = f"{self.app.api_url}/http-createQuestion"
-                async with session.post(endpoint, headers=headers, json=formatted_data) as response:
-                    if response.status == 201:
-                        response_data = await response.json()
-                        messagebox.showinfo("Success", "Question created successfully!")
-                        # Refresh the appropriate section based on parent
-                        if 'Examen' in formatted_data['parent']:
-                            await self.app.show_examens()
-                        else:
-                            await self.app.show_onderdelen()
-                        return True
-                    else:
-                        error_text = await response.text()
-                        error_data = json.loads(error_text)
-                        messagebox.showerror("Error", f"Failed to create question: {error_data.get('message', error_text)}")
-                        return False
-            except Exception as e:
-                messagebox.showerror("Error", f"Error creating question: {str(e)}")
-                return False
+        #Update de vraag in de database
+        try:
+            response_data = await self.app.api_client.post('create_question', formatted_data)
+            messagebox.showinfo("Success", "Vraag succesvol aangemaakt!")
+            
+            # Refresh de lijst
+            if 'Examen' in formatted_data['parent']: #Elk examen begint met 'Examen'
+                await self.app.show_examens()
+            else:
+                await self.app.show_onderdelen()
+            return True
 
-    async def load_and_display_profile_image(self, container, image_url, size=(50, 50)):
-        photo = await self.load_image_from_url(image_url, size)
-        if photo:
-            self.loaded_images.append(photo)
-            img_label = tk.Label(container, image=photo)
-            img_label.pack(side='right', padx=10)
+        except Exception as e:
+            messagebox.showerror("Error", f"Fout bij aanmaken van vraag: {str(e)}")
+            return False
 
     async def update_feedback_status(self, feedback_id, new_status):
-        """Update the status of a feedback item"""
-        async with aiohttp.ClientSession() as session:
-            headers = {
-                'x-api-key': self.app.api_key,
-                'Content-Type': 'application/json'
+        """Update de status van een feedback item, wanneer je op opslaan drukt bij feedback"""
+        try:
+            data = {
+                'feedbackId': feedback_id,
+                'status': new_status
             }
-            try:
-                endpoint = f"{self.app.api_url}/http-updateFeedbackStatus"
-                data = {
-                    'feedbackId': feedback_id,  # Changed from 'id' to 'feedbackId' to match cloud function
-                    'status': new_status
-                }
-                
-                async with session.put(endpoint, headers=headers, json=data) as response:
-                    if response.status == 200:
-                        messagebox.showinfo("Success", "Feedback status updated successfully!")
-                        # Refresh the feedback list
-                        await self.app.show_feedback()
-                    elif response.status == 429:
-                        error_data = await response.json()
-                        retry_after = error_data.get('retryAfter', 'unknown time')
-                        messagebox.showerror(
-                            "Rate Limit Exceeded", 
-                            f"Please try again after {retry_after} seconds"
-                        )
-                    else:
-                        error_data = await response.json()
-                        error_message = error_data.get('message', 'Unknown error occurred')
-                        messagebox.showerror("Error", f"Failed to update feedback status: {error_message}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Error updating feedback status: {str(e)}")
+            
+            await self.app.api_client.put('update_feedback', data)
+            messagebox.showinfo("Success", "Feedback status succesvol bijgewerkt!")
+            # Refresh de lijst
+            await self.app.show_feedback()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Fout bij bijwerken van feedback status: {str(e)}")
     
     def show_feedback_rapport_ui(self, feedback_data):
-        """Display feedback export view"""
+        """Maak de feedback export view, voor show_feedback_rapport"""
         self.clear_content()
         
         # Create main container with scrollbar
@@ -1168,20 +1057,13 @@ class DetailsFrame(tk.Frame):
         header_frame = tk.Frame(main_container, padx=20, pady=10)
         header_frame.pack(fill='x')
         
-        tk.Label(
-            header_frame,
-            text="Feedback Export",
-            font=('Arial', 16, 'bold')
-        ).pack(side='left')
+        tk.Label(header_frame,text="Feedback Export",font=('Arial', 16, 'bold')).pack(side='left')
         
-        # Export button
+        # Export knop
         button_frame = tk.Frame(header_frame)
         button_frame.pack(side='right')
         
-        ttk.Button(
-            button_frame,
-            text="Export als CSV",
-            style='Accent.TButton',
+        ttk.Button(button_frame,text="Export als CSV",style='Accent.TButton',
             command=lambda: self.export_feedback_to_csv(feedback_data)
         ).pack(side='right', padx=5)
         
@@ -1189,17 +1071,22 @@ class DetailsFrame(tk.Frame):
         stats_frame = tk.Frame(main_container, padx=20, pady=10)
         stats_frame.pack(fill='x')
         
-        # Calculate statistics
+        # Tel het aantal feedback items
         total_feedback = len(feedback_data)
         status_counts = {
-            'new': sum(1 for f in feedback_data if f.get('status') == 'new'),
-            'in_progress': sum(1 for f in feedback_data if f.get('status') == 'in_progress'),
-            'completed': sum(1 for f in feedback_data if f.get('status') == 'completed'),
-            'pending': sum(1 for f in feedback_data if f.get('status') == 'pending')
+            'new': 0,
+            'in_progress': 0,
+            'completed': 0,
+            'pending': 0
         }
         
-        tk.Label(
-            stats_frame,
+        # Tel het aantal feedback items per status
+        for feedback in feedback_data:
+            status = feedback.get('status')
+            if status in status_counts:
+                status_counts[status] += 1
+        
+        tk.Label(stats_frame,
             text=f"Totaal aantal feedback items: {total_feedback}",
             font=('Arial', 12)
         ).pack(anchor='w')
@@ -1212,43 +1099,35 @@ class DetailsFrame(tk.Frame):
         }
         
         for status, count in status_counts.items():
-            emoji = status_emojis.get(status, '❓')
-            tk.Label(
-                stats_frame,
-                text=f"{emoji} {status.replace('_', ' ').title()}: {count}",
-                font=('Arial', 12)
-            ).pack(anchor='w')
+            emoji = status_emojis[status]
+            tk.Label(stats_frame, text=f"{emoji} {status.replace('_', ' ').title()}: {count}", font=('Arial', 12)).pack(anchor='w')
 
     def export_feedback_to_csv(self, feedback_data):
+        """Exporteer de feedback naar een csv bestand, voor show_feedback_rapport"""
         try:
             from tkinter import filedialog
             import csv
             from datetime import datetime
             
-            # Ask user for save location
-            file_path = filedialog.asksaveasfilename(
-                defaultextension='.csv',
-                filetypes=[("CSV files", "*.csv")],
-                title="Save Feedback Export"
-            )
+            # Vraag de gebruiker waar hij het bestand wilt opslaan
+            file_path = filedialog.asksaveasfilename(defaultextension='.csv', filetypes=[("CSV files", "*.csv")], title="Feedback Export opslaan")
             
             if not file_path:
                 return
             
             with open(file_path, 'w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
-                # Write headers
+                # Schrijf de headers voor de csv file
                 writer.writerow(['ID', 'Status', 'Subject', 'Feedback', 'Date', 'Question ID', 'User ID'])
                 
                 # Write data
                 for item in feedback_data:
-                    # Format date if available
                     date_str = ''
                     if 'date' in item and '_seconds' in item['date']:
                         date = datetime.fromtimestamp(item['date']['_seconds'])
                         date_str = date.strftime('%d-%m-%Y %H:%M')
                     
-                    writer.writerow([
+                    writer.writerow([ #Schrijf de data naar de csv file
                         item.get('id', ''),
                         item.get('status', ''),
                         item.get('subject', ''),
@@ -1258,9 +1137,10 @@ class DetailsFrame(tk.Frame):
                         item.get('userId', '')
                     ])
             
-            messagebox.showinfo("Success", "Feedback exported successfully to CSV!")
+            messagebox.showinfo("Success", "Feedback succesvol geëxporteerd naar CSV!")
         except Exception as e:
-            messagebox.showerror("Error", f"Error exporting to CSV: {str(e)}")
+            messagebox.showerror("Error", f"Fout bij exporteren naar CSV: {str(e)}")
+
 class QuestionTypeDialog(tk.Toplevel):
     """Popup menu voor het kiezen van het type van een vraag"""
 

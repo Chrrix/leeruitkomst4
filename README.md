@@ -1,29 +1,14 @@
-# activate virtual environment
-source env/bin/activate
-
-# create virtual environment
-python3 -m venv env
-
-# shortcut to run python file
-CMD + CTRL + N
-
 # Theorio Vragenbeheer Systeem
 Desktop applicatie voor het beheren en analyseren van vragen voor de Theorio app.
 
-## Functionaliteiten
-- **Vragenbeheer**
-  - Maken en bewerken van vragen over hoofdstukken en examens
-  - Drag-and-drop vraag organisatie (optioneel)
-  - Bulk import/export functionaliteit (optioneel)
-  - Ondersteuning voor verschillende vraagtypen (multiple choice, open vragen, etc.)
+# Installatie
+- voeg een .env bestand toe met de volgende variabelen:
+  - API_URL= [zie verslag]
+  - API_KEY= [zie verslag]
 
-- **Gebruikersfeedback Verwerking**
-  - Beoordelen en verwerken van gebruikersfeedback
-  - Direct vragen bewerken vanuit feedback overzicht (optioneel)
+- Installeer de dependencies met `pip install -r requirements.txt`
 
-- **Analyses**
-  - Analyse van vraagmoeilijkheid (optioneel)
-  - Inzicht in gebruikersgedrag (optioneel)
+- Run de applicatie met `python main.py`
 
 ## Technische Stack
 - Frontend: Python (Tkinter)
