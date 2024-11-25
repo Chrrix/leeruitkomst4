@@ -20,7 +20,8 @@ API_CONFIG = {
         'update_feedback': '/http-updateFeedbackStatus',
         'create_question': '/http-createQuestion',
         'update_question': '/http-updateQuestion',
-        'delete_question': '/http-deleteQuestion'
+        'delete_question': '/http-deleteQuestion',
+        'helloWorld': '/helloWorld'
     }
 }
 
